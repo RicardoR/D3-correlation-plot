@@ -1,8 +1,21 @@
-// Todo: update to v5!
+// Code from https://www.d3-graph-gallery.com/graph/correlogram_basic.html
+
+var margin = { top: 20, right: 20, bottom: 20, left: 20 },
+  width = 430 - margin.left - margin.right,
+  height = 430 - margin.top - margin.bottom;
+
+// Create the svg area
+var svg = d3
+  .select('#my_dataviz')
+  .append('svg')
+  .attr('width', width + margin.left + margin.right)
+  .attr('height', height + margin.top + margin.bottom)
+  .append('g')
+  .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
 
 d3.csv('./data/data_correlogram_original.csv', function (error, rows) {
+  // Going from wide to long format
   var data = [];
-
   rows.forEach(function (d) {
     var x = d[''];
     delete d[''];
@@ -17,101 +30,85 @@ d3.csv('./data/data_correlogram_original.csv', function (error, rows) {
     }
   });
 
-  var margin = {
-      top: 25,
-      right: 80,
-      bottom: 25,
-      left: 25,
-    },
-    width = 500 - margin.left - margin.right,
-    height = 500 - margin.top - margin.bottom,
-    domain = d3.set(data.map((d) => d.x)).values(),
-    num = Math.sqrt(data.length),
-    color = d3
-      .scaleLinear()
-      .domain([-1, 0, 1])
-      .range(['#B22222', '#fff', '#000080']);
+  // List of all variables and number of them
+  var domain = d3
+    .set(
+      data.map(function (d) {
+        return d.x;
+      })
+    )
+    .values();
+  var num = Math.sqrt(data.length);
 
-  var x = d3.scalePoint().range([0, width]).domain(domain),
-    y = d3.scalePoint().range([0, height]).domain(domain),
-    xSpace = x.range()[1] - x.range()[0],
-    ySpace = y.range()[1] - y.range()[0];
-  ySpace = y.range()[1] - y.range()[0];
+  // Create a color scale
+  var color = d3
+    .scaleLinear()
+    .domain([-1, 0, 1])
+    .range(['#B22222', '#fff', '#000080']);
 
-  var svg = d3
-    .select('body')
-    .append('svg')
-    .attr('width', width + margin.left + margin.right)
-    .attr('height', height + margin.top + margin.bottom)
-    .append('g')
-    .attr('transform', `translate(${margin.left}, ${margin.top})`);
+  // Create a size scale for bubbles on top right. Watch out: must be a rootscale!
+  var size = d3.scaleSqrt().domain([0, 1]).range([0, 9]);
 
+  // X scale
+  var x = d3.scalePoint().range([0, width]).domain(domain);
+
+  // Y scale
+  var y = d3.scalePoint().range([0, height]).domain(domain);
+
+  // Create one 'g' element for each cell of the correlogram
   var cor = svg
     .selectAll('.cor')
     .data(data)
     .enter()
     .append('g')
     .attr('class', 'cor')
-    .attr('transform', (d) => `translate(${x(d.x)}, ${y(d.y)})`);
+    .attr('transform', function (d) {
+      return 'translate(' + x(d.x) + ',' + y(d.y) + ')';
+    });
 
-  //edited to fit with v4 update  2/5/18
-  cor
-    .append('rect')
-    .attr('width', xSpace / 10)
-    .attr('height', ySpace / 10)
-    .attr('x', -xSpace / 20)
-    .attr('y', -ySpace / 20);
-
+  // Low left part + Diagonal: Add the text with specific color
   cor
     .filter(function (d) {
       var ypos = domain.indexOf(d.y);
       var xpos = domain.indexOf(d.x);
-      for (var i = ypos + 1; i < num; i++) {
-        if (i === xpos) return false;
-      }
-      return true;
+      return xpos <= ypos;
     })
     .append('text')
     .attr('y', 5)
-    .text((d) => (d.x === d.y ? d.x : d.value.toFixed(2)))
-    .style('fill', (d) => (d.value === 1 ? '#000' : color(d.value)));
+    .text(function (d) {
+      if (d.x === d.y) {
+        return d.x;
+      } else {
+        return d.value.toFixed(2);
+      }
+    })
+    .style('font-size', 11)
+    .style('text-align', 'center')
+    .style('fill', function (d) {
+      if (d.x === d.y) {
+        return '#000';
+      } else {
+        return color(d.value);
+      }
+    });
 
+  // Up right part: add circles
   cor
     .filter(function (d) {
       var ypos = domain.indexOf(d.y);
       var xpos = domain.indexOf(d.x);
-      for (var i = ypos + 1; i < num; i++) {
-        if (i === xpos) return true;
-      }
-      return false;
+      return xpos > ypos;
     })
     .append('circle')
-    .attr('r', (d) => (width / (num * 2)) * (Math.abs(d.value) + 0.1))
-    .style('fill', (d) => (d.value === 1 ? '#000' : color(d.value)));
-
-  var aS = d3
-    .scaleLinear()
-    .range([-margin.top + 5, height + margin.bottom - 5])
-    .domain([1, -1]);
-
-  var yA = d3.axisRight().scale(aS).tickPadding(7);
-
-  var aG = svg
-    .append('g')
-    .attr('class', 'y axis')
-    .call(yA)
-    .attr('transform', `translate( ${width + margin.right / 2},0)`);
-
-  var iR = d3.range(-1, 1.01, 0.01);
-  var h = height / iR.length + 3;
-  iR.forEach(function (d) {
-    aG.append('rect')
-      .style('fill', color(d))
-      .style('stroke-width', 0)
-      .style('stoke', 'none')
-      .attr('height', h)
-      .attr('width', 10)
-      .attr('x', 0)
-      .attr('y', aS(d));
-  });
+    .attr('r', function (d) {
+      return size(Math.abs(d.value));
+    })
+    .style('fill', function (d) {
+      if (d.x === d.y) {
+        return '#000';
+      } else {
+        return color(d.value);
+      }
+    })
+    .style('opacity', 0.8);
 });
